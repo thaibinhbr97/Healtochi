@@ -1,0 +1,7 @@
+{
+  "name": "Healtogochi",
+  "description": "An AI-powered companion for kids to help with self-care and recovery.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
