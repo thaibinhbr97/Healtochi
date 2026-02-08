@@ -1,6 +1,7 @@
-import { BarChart2, CheckSquare, Clock, Home, Mic, Plus, ShoppingBag } from 'lucide-react';
+import { BarChart2, CheckSquare, Clock, Home, Mic, Plus, Shield, ShoppingBag } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import cheerDolphin from './assets/cheer_dolphin.gif';
+import ChatHistory from './components/ChatHistory';
 import PetDisplay from './components/PetDisplay';
 import SolanaShop from './components/SolanaShop';
 import Stats from './components/Stats';
@@ -19,6 +20,9 @@ const App: React.FC = () => {
     const [isTalking, setIsTalking] = useState(false);
     const [showCelebration, setShowCelebration] = useState(false);
     const [celebrationTaskName, setCelebrationTaskName] = useState('');
+    const [isParentMode, setIsParentMode] = useState(false);
+    const [solanaTx, setSolanaTx] = useState<string | null>(null);
+    const [isRewarding, setIsRewarding] = useState(false);
 
     // Pet State
     const [pet, setPet] = useState<PetState>({
@@ -107,9 +111,41 @@ const App: React.FC = () => {
                     completedAt: newStatus ? now : null
                 })
             });
+
+            // Trigger Solana Reward on completion
+            if (newStatus) {
+                triggerSolanaReward();
+            }
         } catch (err) {
             console.error("Failed to update task:", err);
             // Revert on failure (omitted for brevity in demo)
+        }
+    };
+
+    const triggerSolanaReward = async () => {
+        setIsRewarding(true);
+        setSolanaTx(null);
+        try {
+            // In a real app, this address would come from the user's connected wallet
+            const userAddress = "8zAH3PTdK1tpF4RtHwnx9SXuinfygKcs8XbBJccojFGS";
+            const response = await fetch('http://127.0.0.1:8000/api/reward', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    user_address: userAddress,
+                    amount: 1000000 // 0.001 SOL
+                })
+            });
+            const data = await response.json();
+            if (data.status === 'success') {
+                setSolanaTx(data.signature);
+                // Notification stays for 10 seconds
+                setTimeout(() => setSolanaTx(null), 10000);
+            }
+        } catch (err) {
+            console.error("Solana reward failed:", err);
+        } finally {
+            setIsRewarding(false);
         }
     };
 
@@ -240,6 +276,10 @@ const App: React.FC = () => {
 
     // Render Content based on Tab
     const renderContent = () => {
+        if (isParentMode) {
+            return <ChatHistory onBack={() => setIsParentMode(false)} />;
+        }
+
         switch (activeTab) {
             case Tab.HOME:
                 return (
@@ -372,53 +412,87 @@ const App: React.FC = () => {
             {/* Main Content Area */}
             <main className="flex-1 relative overflow-hidden">
                 {renderContent()}
+
+                {/* Solana Transaction Toast */}
+                {solanaTx && (
+                    <div className="absolute top-20 left-4 right-4 z-[70] bg-slate-900/90 backdrop-blur-md text-white p-3 rounded-2xl shadow-2xl border border-white/10 animate-in slide-in-from-top duration-500">
+                        <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 bg-indigo-500 rounded-full flex items-center justify-center">
+                                <Shield size={16} className="text-white" />
+                            </div>
+                            <div className="flex-1">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-indigo-300">Solana Transaction Sent!</p>
+                                <a
+                                    href={`https://explorer.solana.com/tx/${solanaTx}?cluster=devnet`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-xs font-bold underline decoration-indigo-500 underline-offset-2 hover:text-indigo-200"
+                                >
+                                    View on Solscan →
+                                </a>
+                            </div>
+                            <button onClick={() => setSolanaTx(null)} className="text-slate-400 hover:text-white">
+                                <Shield size={14} />
+                            </button>
+                        </div>
+                    </div>
+                )}
             </main>
 
             {/* Stats Overlay (Tabless for now, integrated into stats view if needed) */}
-            {activeTab === 'STATS' as any && <Stats moodLogs={moodLogs} totalXP={pet.xp + (pet.level * 100)} />}
+            {activeTab === 'STATS' as any && !isParentMode && <Stats moodLogs={moodLogs} totalXP={pet.xp + (pet.level * 100)} />}
 
 
             {/* Bottom Navigation */}
-            <nav className="bg-white border-t border-slate-100 p-4 pb-6 flex justify-around items-center absolute bottom-0 w-full shadow-[0_-10px_40px_rgba(0,0,0,0.05)]">
-                <button
-                    onClick={() => setActiveTab(Tab.HOME)}
-                    className={`flex flex-col items-center gap-1 transition-colors ${activeTab === Tab.HOME ? 'text-indigo-600' : 'text-slate-400'}`}
-                >
-                    <Home size={24} strokeWidth={activeTab === Tab.HOME ? 3 : 2} />
-                    <span className="text-[10px] font-bold">Home</span>
-                </button>
+            {!isParentMode && (
+                <nav className="bg-white border-t border-slate-100 p-4 pb-6 flex justify-around items-center absolute bottom-0 w-full shadow-[0_-10px_40px_rgba(0,0,0,0.05)]">
+                    <button
+                        onClick={() => setActiveTab(Tab.HOME)}
+                        className={`flex flex-col items-center gap-1 transition-colors ${activeTab === Tab.HOME ? 'text-indigo-600' : 'text-slate-400'}`}
+                    >
+                        <Home size={24} strokeWidth={activeTab === Tab.HOME ? 3 : 2} />
+                        <span className="text-[10px] font-bold">Home</span>
+                    </button>
 
-                <button
-                    onClick={() => setActiveTab(Tab.TASKS)}
-                    className={`flex flex-col items-center gap-1 transition-colors ${activeTab === Tab.TASKS ? 'text-indigo-600' : 'text-slate-400'}`}
-                >
-                    <CheckSquare size={24} strokeWidth={activeTab === Tab.TASKS ? 3 : 2} />
-                    <span className="text-[10px] font-bold">Goals</span>
-                </button>
+                    <button
+                        onClick={() => setActiveTab(Tab.TASKS)}
+                        className={`flex flex-col items-center gap-1 transition-colors ${activeTab === Tab.TASKS ? 'text-indigo-600' : 'text-slate-400'}`}
+                    >
+                        <CheckSquare size={24} strokeWidth={activeTab === Tab.TASKS ? 3 : 2} />
+                        <span className="text-[10px] font-bold">Goals</span>
+                    </button>
 
+                    <button
+                        onClick={() => setIsParentMode(true)}
+                        className="bg-indigo-50 p-3 rounded-2xl text-indigo-600 shadow-md transform -translate-y-4 border-4 border-white hover:scale-105 transition-transform"
+                    >
+                        <Shield size={28} />
+                    </button>
 
-                <button
-                    onClick={() => setActiveTab(Tab.SHOP)}
-                    className={`flex flex-col items-center gap-1 transition-colors ${activeTab === Tab.SHOP ? 'text-indigo-600' : 'text-slate-400'}`}
-                >
-                    <ShoppingBag size={24} strokeWidth={activeTab === Tab.SHOP ? 3 : 2} />
-                    <span className="text-[10px] font-bold">Shop</span>
-                </button>
+                    <button
+                        onClick={() => setActiveTab(Tab.SHOP)}
+                        className={`flex flex-col items-center gap-1 transition-colors ${activeTab === Tab.SHOP ? 'text-indigo-600' : 'text-slate-400'}`}
+                    >
+                        <ShoppingBag size={24} strokeWidth={activeTab === Tab.SHOP ? 3 : 2} />
+                        <span className="text-[10px] font-bold">Shop</span>
+                    </button>
 
-                <button
-                    onClick={() => setActiveTab('STATS' as any)}
-                    className={`flex flex-col items-center gap-1 transition-colors ${activeTab === 'STATS' as any ? 'text-indigo-600' : 'text-slate-400'}`}
-                >
-                    <BarChart2 size={24} strokeWidth={activeTab === 'STATS' as any ? 3 : 2} />
-                    <span className="text-[10px] font-bold">Journey</span>
-                </button>
-            </nav>
+                    <button
+                        onClick={() => setActiveTab('STATS' as any)}
+                        className={`flex flex-col items-center gap-1 transition-colors ${activeTab === 'STATS' as any ? 'text-indigo-600' : 'text-slate-400'}`}
+                    >
+                        <BarChart2 size={24} strokeWidth={activeTab === 'STATS' as any ? 3 : 2} />
+                        <span className="text-[10px] font-bold">Journey</span>
+                    </button>
+                </nav>
+            )}
 
             {/* Voice Modal Overlay */}
             {showVoiceModal && (
                 <VoiceInterface
                     onTalkingStateChange={setIsTalking}
                     onClose={() => setShowVoiceModal(false)}
+                    tasks={tasks}
                 />
             )}
 

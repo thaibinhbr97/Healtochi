@@ -26,6 +26,13 @@ export interface HealthStats {
     moods?: string[]; // Optional: if we want to correlate mood
 }
 
+export interface ChatLog {
+    id: string;
+    user_text: string;
+    ai_text: string;
+    timestamp: string;
+}
+
 export enum Tab {
     HOME = 'HOME',
     TASKS = 'TASKS',

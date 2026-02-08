@@ -2,13 +2,15 @@ import { Loader2, Mic, MicOff, XCircle } from 'lucide-react';
 import React, { useEffect, useRef, useState } from 'react';
 
 import { INITIAL_TASKS } from '../constants';
+import { Task } from '../types';
 
 interface VoiceInterfaceProps {
     onTalkingStateChange: (isTalking: boolean) => void;
     onClose: () => void;
+    tasks: Task[];
 }
 
-const VoiceInterface: React.FC<VoiceInterfaceProps> = ({ onTalkingStateChange, onClose }) => {
+const VoiceInterface: React.FC<VoiceInterfaceProps> = ({ onTalkingStateChange, onClose, tasks }) => {
     const [isListening, setIsListening] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
     const [transcription, setTranscription] = useState('');
@@ -80,8 +82,15 @@ const VoiceInterface: React.FC<VoiceInterfaceProps> = ({ onTalkingStateChange, o
         setError(null);
 
         try {
-            const response = await fetch(`http://127.0.0.1:8000/api/talk?text=${encodeURIComponent(text)}`, {
+            const response = await fetch('http://127.0.0.1:8000/api/talk', {
                 method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    text: text,
+                    tasks: tasks
+                })
             });
 
             if (!response.ok) throw new Error('Failed to talk to mascot');
@@ -205,7 +214,7 @@ const VoiceInterface: React.FC<VoiceInterfaceProps> = ({ onTalkingStateChange, o
 
                     {responseLabel && (
                         <div className="bg-indigo-600 p-5 rounded-2xl shadow-lg relative overflow-hidden text-center">
-                            <p className="text-sm font-bold text-indigo-200 uppercase text-[10px] mb-1">Mascot says</p>
+                            <p className="text-sm font-bold text-indigo-200 uppercase text-[10px] mb-1">Finny says</p>
                             <p className="text-white font-bold text-lg leading-tight">"{responseLabel}"</p>
                         </div>
                     )}

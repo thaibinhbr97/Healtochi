@@ -1,4 +1,5 @@
 import os
+from datetime import datetime, timezone, timedelta
 import uvicorn
 import urllib.parse
 from fastapi import FastAPI, UploadFile, File, Response
@@ -48,6 +49,10 @@ class Task(BaseModel):
 class TaskUpdate(BaseModel):
     title: Optional[str] = None
     completed: Optional[bool] = None
+
+class RewardRequest(BaseModel):
+    user_address: str
+    amount: int
     points: Optional[int] = None
     icon: Optional[str] = None
     completedAt: Optional[str] = None
@@ -91,11 +96,10 @@ async def log_health(log: HealthLog):
 @app.get("/api/health/stats")
 async def get_health_stats():
     # Aggregation to get daily counts for the last 7 days
-    from datetime import datetime, timedelta
     
-    end_date = datetime.utcnow()
+    end_date = datetime.now(timezone.utc)
     start_date = end_date - timedelta(days=6)
-    start_str = start_date.isoformat()
+    start_str = start_date.isoformat().replace("+00:00", "Z")
     
     # 1. Aggregate Health Logs (Water/Food)
     health_pipeline = [
@@ -201,13 +205,41 @@ async def seed_tasks():
     await db.tasks.insert_many(INITIAL_TASKS)
     return {"status": "Database re-seeded!"}
 
+class ChatLog(BaseModel):
+    user_text: str
+    ai_text: str
+    timestamp: str
+
+class ChatRequest(BaseModel):
+    text: str
+    tasks: List[Task]
+
 @app.post("/api/talk")
-async def talk_to_mascot(text: str):
+async def talk_to_mascot(request: ChatRequest):
+    text = request.text
+    tasks = request.tasks
+    
+    # Construct Context from Tasks
+    task_context = "The child has the following goals:\n"
+    for t in tasks:
+        status = "COMPLETED" if t.completed else "NOT DONE"
+        task_context += f"- {t.title} ({status})\n"
+    
+    system_prompt = os.getenv("SYSTEM_INSTRUCTION", "You are Healtogochi.")
+    full_prompt = f"{system_prompt}\n\nCONTEXT:\n{task_context}\n\nCHILD SAYS: {text}"
+
     # Get Gemini response
     chat = model.start_chat()
-    response = chat.send_message(text)
+    response = chat.send_message(full_prompt)
     response_text = response.text
     
+    # Save to MongoDB
+    await db.chat_logs.insert_one({
+        "user_text": text,
+        "ai_text": response_text,
+        "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    })
+
     # Generate ElevenLabs audio
     audio_content = await text_to_speech(response_text)
     
@@ -223,10 +255,18 @@ async def talk_to_mascot(text: str):
     
     return {"text": response_text}
 
+@app.get("/api/parent/chat-history")
+async def get_chat_history():
+    logs = await db.chat_logs.find().sort("timestamp", -1).to_list(100)
+    for log in logs:
+        log["id"] = str(log["_id"])
+        del log["_id"]
+    return logs
+
 @app.post("/api/reward")
-async def reward(user_address: str, amount: int):
+async def reward(req: RewardRequest):
     # Reward user for completing tasks
-    result = await reward_user(user_address, amount)
+    result = await reward_user(req.user_address, req.amount)
     return result
 
 if __name__ == "__main__":
