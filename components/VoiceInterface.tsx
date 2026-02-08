@@ -1,4 +1,4 @@
-import { Loader2, Mic, MicOff, Volume2, XCircle } from 'lucide-react';
+import { Loader2, Mic, MicOff, XCircle } from 'lucide-react';
 import React, { useEffect, useRef, useState } from 'react';
 
 import { INITIAL_TASKS } from '../constants';
@@ -57,6 +57,16 @@ const VoiceInterface: React.FC<VoiceInterfaceProps> = ({ onTalkingStateChange, o
             recognitionRef.current.onend = () => {
                 setIsListening(false);
             };
+
+            // Auto-start listening after a tiny delay for smooth UI transition
+            setTimeout(() => {
+                try {
+                    recognitionRef.current?.start();
+                    setIsListening(true);
+                } catch (e) {
+                    console.error("Auto-start mic failed:", e);
+                }
+            }, 500);
         }
 
         return () => {
@@ -194,10 +204,7 @@ const VoiceInterface: React.FC<VoiceInterfaceProps> = ({ onTalkingStateChange, o
                     )}
 
                     {responseLabel && (
-                        <div className="bg-indigo-600 p-5 rounded-2xl shadow-lg relative overflow-hidden">
-                            <div className="absolute top-0 right-0 p-2 opacity-10">
-                                <Volume2 size={48} className="text-white" />
-                            </div>
+                        <div className="bg-indigo-600 p-5 rounded-2xl shadow-lg relative overflow-hidden text-center">
                             <p className="text-sm font-bold text-indigo-200 uppercase text-[10px] mb-1">Mascot says</p>
                             <p className="text-white font-bold text-lg leading-tight">"{responseLabel}"</p>
                         </div>
