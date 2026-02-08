@@ -4,6 +4,7 @@ export interface Task {
     completed: boolean;
     points: number;
     icon: string; // Emoji
+    completedAt?: string;
 }
 
 export interface MoodLog {
@@ -16,7 +17,6 @@ export enum Tab {
     HOME = 'HOME',
     TASKS = 'TASKS',
     VOICE = 'VOICE',
-    BREATHE = 'BREATHE',
     SHOP = 'SHOP'
 }
 

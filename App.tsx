@@ -1,17 +1,19 @@
-import { BarChart2, CheckSquare, Clock, Cloud, Home, Mic, Plus, ShoppingBag } from 'lucide-react';
+import { BarChart2, CheckSquare, Clock, Home, Mic, Plus, ShoppingBag } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import cheerDolphin from './assets/cheer_dolphin.gif';
-import BreathingExercise from './components/BreathingExercise';
 import PetDisplay from './components/PetDisplay';
 import SolanaShop from './components/SolanaShop';
 import Stats from './components/Stats';
 import VoiceInterface from './components/VoiceInterface';
 import { INITIAL_TASKS } from './constants';
 import { MoodLog, PetState, Tab, Task } from './types';
+import { AUDIO_SOURCES, playSound } from './utils/audio';
 
 const App: React.FC = () => {
     const [activeTab, setActiveTab] = useState<Tab>(Tab.HOME);
     const [showVoiceModal, setShowVoiceModal] = useState(false);
+    const [showAddGoalModal, setShowAddGoalModal] = useState(false);
+    const [newGoalTitle, setNewGoalTitle] = useState('');
     const [tasks, setTasks] = useState<Task[]>(INITIAL_TASKS);
     const [moodLogs, setMoodLogs] = useState<MoodLog[]>([]);
     const [isTalking, setIsTalking] = useState(false);
@@ -34,24 +36,14 @@ const App: React.FC = () => {
         tokens: 45 // Initial tokens
     });
 
-    // Initialize cooldowns on first load if they're 0 to prevent immediate decay/lock
-    useEffect(() => {
-        if (pet.lastEatenTime === 0 || pet.lastWaterTime === 0) {
-            setPet(prev => ({
-                ...prev,
-                lastEatenTime: prev.lastEatenTime === 0 ? Date.now() : prev.lastEatenTime,
-                lastWaterTime: prev.lastWaterTime === 0 ? Date.now() : prev.lastWaterTime
-            }));
-        }
-    }, []);
-
     // Health Decay Logic
     useEffect(() => {
         const checkHunger = () => {
             const fourHours = 4 * 60 * 60 * 1000;
             const now = Date.now();
 
-            if (now - pet.lastEatenTime > fourHours) {
+            // Only decay if they have eaten at least once (prevents immediate decay on start)
+            if (pet.lastEatenTime > 0 && (now - pet.lastEatenTime > fourHours)) {
                 setPet(prev => ({
                     ...prev,
                     health: Math.max(0, prev.health - 2) // Gradually lose 2% health
@@ -82,21 +74,43 @@ const App: React.FC = () => {
     }, []);
 
     // Task Handler
-    const toggleTask = (taskId: string) => {
+    const toggleTask = async (taskId: string) => {
+        const task = tasks.find(t => t.id === taskId);
+        if (!task) return;
+
+        const newStatus = !task.completed;
+        const now = new Date().toISOString();
+
+        // Optimistic Update
         setTasks(prev => prev.map(t => {
             if (t.id === taskId) {
-                const newStatus = !t.completed;
                 // Award XP if completing
                 if (newStatus) {
                     addXP(t.points);
                     setCelebrationTaskName(t.title);
                     setShowCelebration(true);
+                    playSound(AUDIO_SOURCES.CELEBRATION, 3000);
                     setTimeout(() => setShowCelebration(false), 3000);
                 }
-                return { ...t, completed: newStatus };
+                return { ...t, completed: newStatus, completedAt: newStatus ? now : undefined };
             }
             return t;
         }));
+
+        // Persist to Backend
+        try {
+            await fetch(`http://127.0.0.1:8000/api/tasks/${taskId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    completed: newStatus,
+                    completedAt: newStatus ? now : null
+                })
+            });
+        } catch (err) {
+            console.error("Failed to update task:", err);
+            // Revert on failure (omitted for brevity in demo)
+        }
     };
 
     const addXP = (amount: number) => {
@@ -121,6 +135,7 @@ const App: React.FC = () => {
     };
 
     const logMood = async (mood: MoodLog['mood']) => {
+        playSound(AUDIO_SOURCES.CHECKIN, 1000);
         const fourHours = 4 * 60 * 60 * 1000;
         const now = Date.now();
         const canCheckin = now - pet.lastMoodCheckinTime >= fourHours;
@@ -149,33 +164,64 @@ const App: React.FC = () => {
     };
 
     const handleHealthAction = (type: 'water' | 'food') => {
+        const isWater = type === 'water';
+        const now = Date.now();
+
+        // Validation logic outside setPet to handle audio triggers
+        if (isWater) {
+            const oneHour = 1 * 60 * 60 * 1000;
+            if (pet.waterCount >= 3 || (pet.lastWaterTime > 0 && now - pet.lastWaterTime < oneHour)) return;
+            playSound(AUDIO_SOURCES.DRINKING, 1000);
+        } else {
+            const fourHours = 4 * 60 * 60 * 1000;
+            if (pet.foodCount >= 3 || (pet.lastEatenTime > 0 && now - pet.lastEatenTime < fourHours)) return;
+            playSound(AUDIO_SOURCES.EATING, 1000);
+        }
+
         setPet(prev => {
-            const isWater = type === 'water';
             const currentCount = isWater ? prev.waterCount : prev.foodCount;
-
-            if (currentCount >= 3) return prev;
-
-            // Check 4-hour cooldown for food
-            if (!isWater) {
-                const fourHours = 4 * 60 * 60 * 1000;
-                const now = Date.now();
-                if (now - prev.lastEatenTime < fourHours) {
-                    return prev;
-                }
-            }
-
             const newCount = currentCount + 1;
-            const healthBoost = 15; // Each action boosts health
+            const healthBoost = 15;
 
             return {
                 ...prev,
                 health: Math.min(100, prev.health + healthBoost),
                 waterCount: isWater ? newCount : prev.waterCount,
                 foodCount: !isWater ? newCount : prev.foodCount,
-                lastEatenTime: !isWater ? Date.now() : prev.lastEatenTime,
-                lastWaterTime: isWater ? Date.now() : prev.lastWaterTime
+                lastEatenTime: !isWater ? now : prev.lastEatenTime,
+                lastWaterTime: isWater ? now : prev.lastWaterTime
             };
         });
+    };
+
+    const handleCreateGoal = async () => {
+        if (!newGoalTitle.trim()) return;
+
+        const newTask = {
+            title: newGoalTitle,
+            points: 10,
+            icon: '✨',
+            completed: false
+        };
+
+        try {
+            const response = await fetch('http://127.0.0.1:8000/api/tasks', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(newTask)
+            });
+            if (response.ok) {
+                const result = await response.json();
+                setTasks(prev => [...prev, { ...newTask, id: result.id }]);
+            }
+        } catch (err) {
+            console.error("Failed to add task to DB:", err);
+            // Fallback for demo
+            setTasks(prev => [...prev, { ...newTask, id: Math.random().toString() }]);
+        }
+
+        setNewGoalTitle('');
+        setShowAddGoalModal(false);
     };
 
     // Render Content based on Tab
@@ -273,7 +319,7 @@ const App: React.FC = () => {
                     <div className="p-6 h-full overflow-y-auto pb-24">
                         <h2 className="text-2xl font-bold text-slate-800 mb-6">Self Care Menu</h2>
                         <div className="space-y-3">
-                            {tasks.map(task => (
+                            {tasks.filter(t => !t.completed).map(task => (
                                 <div key={task.id} className="bg-white p-4 rounded-xl flex items-center gap-4 border border-slate-100 shadow-sm transition-transform active:scale-[0.99]">
                                     <button
                                         onClick={() => toggleTask(task.id)}
@@ -290,41 +336,13 @@ const App: React.FC = () => {
                             ))}
                         </div>
                         <button
-                            onClick={async () => {
-                                const title = prompt("What's your new health goal?");
-                                if (!title) return;
-
-                                const newTask = {
-                                    title,
-                                    points: 10,
-                                    icon: '✨',
-                                    completed: false
-                                };
-
-                                try {
-                                    const response = await fetch('http://127.0.0.1:8000/api/tasks', {
-                                        method: 'POST',
-                                        headers: { 'Content-Type': 'application/json' },
-                                        body: JSON.stringify(newTask)
-                                    });
-                                    if (response.ok) {
-                                        const result = await response.json();
-                                        setTasks(prev => [...prev, { ...newTask, id: result.id }]);
-                                    }
-                                } catch (err) {
-                                    console.error("Failed to add task to DB:", err);
-                                    // Fallback for demo
-                                    setTasks(prev => [...prev, { ...newTask, id: Math.random().toString() }]);
-                                }
-                            }}
-                            className="mt-6 w-full py-3 border-2 border-dashed border-slate-300 text-slate-400 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-slate-50"
+                            onClick={() => setShowAddGoalModal(true)}
+                            className="mt-6 w-full py-3 border-2 border-dashed border-slate-300 text-slate-400 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-slate-50 transition-colors"
                         >
                             <Plus size={20} /> Add Custom Goal
                         </button>
                     </div>
                 );
-            case Tab.BREATHE:
-                return <BreathingExercise />;
             case Tab.SHOP:
                 return <SolanaShop tokens={pet.tokens} onPurchase={(cost, name) => {
                     setPet(prev => ({ ...prev, tokens: prev.tokens - cost }));
@@ -366,14 +384,6 @@ const App: React.FC = () => {
 
 
                 <button
-                    onClick={() => setActiveTab(Tab.BREATHE)}
-                    className={`flex flex-col items-center gap-1 transition-colors ${activeTab === Tab.BREATHE ? 'text-indigo-600' : 'text-slate-400'}`}
-                >
-                    <Cloud size={24} strokeWidth={activeTab === Tab.BREATHE ? 3 : 2} />
-                    <span className="text-[10px] font-bold">Breathe</span>
-                </button>
-
-                <button
                     onClick={() => setActiveTab(Tab.SHOP)}
                     className={`flex flex-col items-center gap-1 transition-colors ${activeTab === Tab.SHOP ? 'text-indigo-600' : 'text-slate-400'}`}
                 >
@@ -397,6 +407,45 @@ const App: React.FC = () => {
                     onClose={() => setShowVoiceModal(false)}
                 />
             )}
+
+            {/* Add Goal Modal */}
+            {showAddGoalModal && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 animate-in fade-in zoom-in-95 duration-200">
+                    <div className="absolute inset-0 bg-indigo-900/40 backdrop-blur-sm" onClick={() => setShowAddGoalModal(false)}></div>
+                    <div className="bg-white w-full max-w-xs rounded-[2rem] p-6 shadow-2xl relative z-10 flex flex-col gap-4">
+                        <div className="text-center">
+                            <h3 className="text-xl font-black text-slate-800">New Goal</h3>
+                            <p className="text-slate-400 text-xs font-bold uppercase tracking-wide">What do you want to achieve?</p>
+                        </div>
+
+                        <input
+                            autoFocus
+                            type="text"
+                            value={newGoalTitle}
+                            onChange={(e) => setNewGoalTitle(e.target.value)}
+                            placeholder="e.g., Read 10 pages"
+                            className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl p-4 font-bold text-slate-700 placeholder:text-slate-300 focus:border-indigo-400 outline-none text-center"
+                            onKeyDown={(e) => e.key === 'Enter' && handleCreateGoal()}
+                        />
+
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => setShowAddGoalModal(false)}
+                                className="flex-1 py-3 rounded-xl font-bold text-slate-400 hover:bg-slate-50 transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleCreateGoal}
+                                className="flex-1 py-3 rounded-xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-transform active:scale-95"
+                            >
+                                Create
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Task Celebration Overlay */}
             {showCelebration && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 animate-in fade-in zoom-in duration-300">
@@ -414,11 +463,11 @@ const App: React.FC = () => {
                             <p className="text-indigo-600 font-bold uppercase text-xs tracking-widest mt-1">Goal Completed</p>
                         </div>
 
-                        <div className="w-48 h-48 bg-sky-50 rounded-full flex items-center justify-center relative overflow-hidden border-4 border-sky-100">
+                        <div className="w-48 h-48 rounded-full overflow-hidden bg-gradient-to-br from-sky-100 to-indigo-100 border-4 border-white shadow-xl relative z-10 flex items-center justify-center">
                             <img
                                 src={cheerDolphin}
                                 alt="Cheering Dolphin"
-                                className="w-40 h-40 object-contain drop-shadow-xl"
+                                className="w-full h-full object-cover"
                             />
                         </div>
 

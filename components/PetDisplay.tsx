@@ -4,6 +4,7 @@ import happyDolphin from '../assets/happy_dolphin.png';
 import sadDolphin from '../assets/sad_dolphin.png';
 import tiredDolphin from '../assets/tired_dolphin.png';
 import { PetState, Task } from '../types';
+import { AUDIO_SOURCES, playSound } from '../utils/audio';
 
 interface PetDisplayProps {
     pet: PetState;
@@ -28,7 +29,8 @@ const PetDisplay: React.FC<PetDisplayProps> = ({ pet, isTalking, tasks, onHealth
     useEffect(() => {
         if (pet.xp > prevXPRef.current || pet.level > prevLevelRef.current) {
             setIsCelebrating(true);
-            const timer = setTimeout(() => setIsCelebrating(false), 2000);
+            playSound(AUDIO_SOURCES.CELEBRATION, 3000);
+            const timer = setTimeout(() => setIsCelebrating(false), 3000);
 
             // Sync refs
             prevXPRef.current = pet.xp;
@@ -49,7 +51,7 @@ const PetDisplay: React.FC<PetDisplayProps> = ({ pet, isTalking, tasks, onHealth
             // Eating Cooldown (4 Hours)
             const fourHours = 4 * 60 * 60 * 1000;
             const eatElapsed = now - (pet.lastEatenTime || 0);
-            if (eatElapsed < fourHours) {
+            if (pet.lastEatenTime > 0 && eatElapsed < fourHours) {
                 const remaining = fourHours - eatElapsed;
                 const h = Math.floor(remaining / 3600000);
                 const m = Math.floor((remaining % 3600000) / 60000);
@@ -58,13 +60,13 @@ const PetDisplay: React.FC<PetDisplayProps> = ({ pet, isTalking, tasks, onHealth
                 setIsHungry(false);
             } else {
                 setEatingCooldown(null);
-                setIsHungry(true);
+                setIsHungry(pet.lastEatenTime > 0);
             }
 
             // Water Cooldown (1 Hour)
             const oneHour = 1 * 60 * 60 * 1000;
             const waterElapsed = now - (pet.lastWaterTime || 0);
-            if (waterElapsed < oneHour) {
+            if (pet.lastWaterTime > 0 && waterElapsed < oneHour) {
                 const remaining = oneHour - waterElapsed;
                 const m = Math.floor(remaining / 60000);
                 const s = Math.floor((remaining % 60000) / 1000);
@@ -72,7 +74,7 @@ const PetDisplay: React.FC<PetDisplayProps> = ({ pet, isTalking, tasks, onHealth
                 setIsThirsty(false);
             } else {
                 setWaterCooldown(null);
-                setIsThirsty(true);
+                setIsThirsty(pet.lastWaterTime > 0);
             }
         };
 

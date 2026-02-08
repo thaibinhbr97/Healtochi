@@ -43,6 +43,14 @@ class Task(BaseModel):
     completed: bool
     points: int
     icon: str
+    completedAt: Optional[str] = None
+
+class TaskUpdate(BaseModel):
+    title: Optional[str] = None
+    completed: Optional[bool] = None
+    points: Optional[int] = None
+    icon: Optional[str] = None
+    completedAt: Optional[str] = None
 
 @app.get("/")
 async def root():
@@ -55,6 +63,21 @@ async def root():
             "solana_treasury": "configured" if os.getenv("TREASURY_SECRET_KEY") else "missing"
         }
     }
+
+@app.put("/api/tasks/{task_id}")
+async def update_task(task_id: str, task_update: TaskUpdate):
+    update_data = {k: v for k, v in task_update.dict().items() if v is not None}
+    if not update_data:
+        return {"status": "no updates"}
+    
+    from bson import ObjectId
+    try:
+        result = await db.tasks.update_one({"_id": ObjectId(task_id)}, {"$set": update_data})
+        if result.modified_count == 1:
+            return {"status": "success", "id": task_id}
+        return {"status": "success", "message": "No changes made"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 @app.post("/api/mood")
 async def log_mood(mood: MoodLog):
