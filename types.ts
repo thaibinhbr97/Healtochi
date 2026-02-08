@@ -13,6 +13,19 @@ export interface MoodLog {
     note?: string;
 }
 
+export interface HealthLog {
+    action: 'water' | 'food';
+    timestamp: string;
+}
+
+export interface HealthStats {
+    date: string;
+    water: number;
+    food: number;
+    tasks: number;
+    moods?: string[]; // Optional: if we want to correlate mood
+}
+
 export enum Tab {
     HOME = 'HOME',
     TASKS = 'TASKS',

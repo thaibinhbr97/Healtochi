@@ -163,7 +163,7 @@ const App: React.FC = () => {
         }
     };
 
-    const handleHealthAction = (type: 'water' | 'food') => {
+    const handleHealthAction = async (type: 'water' | 'food') => {
         const isWater = type === 'water';
         const now = Date.now();
 
@@ -192,6 +192,20 @@ const App: React.FC = () => {
                 lastWaterTime: isWater ? now : prev.lastWaterTime
             };
         });
+
+        // Persist to Backend
+        try {
+            await fetch('http://127.0.0.1:8000/api/health', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: type,
+                    timestamp: new Date().toISOString()
+                })
+            });
+        } catch (err) {
+            console.error("Failed to log health action:", err);
+        }
     };
 
     const handleCreateGoal = async () => {

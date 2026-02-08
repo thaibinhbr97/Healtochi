@@ -79,6 +79,83 @@ async def update_task(task_id: str, task_update: TaskUpdate):
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
+class HealthLog(BaseModel):
+    action: str  # 'water' or 'food'
+    timestamp: str
+
+@app.post("/api/health")
+async def log_health(log: HealthLog):
+    await db.health_logs.insert_one(log.dict())
+    return {"status": "success"}
+
+@app.get("/api/health/stats")
+async def get_health_stats():
+    # Aggregation to get daily counts for the last 7 days
+    from datetime import datetime, timedelta
+    
+    end_date = datetime.utcnow()
+    start_date = end_date - timedelta(days=6)
+    start_str = start_date.isoformat()
+    
+    # 1. Aggregate Health Logs (Water/Food)
+    health_pipeline = [
+        {
+            "$match": {
+                "timestamp": {"$gte": start_str}
+            }
+        },
+        {
+            "$group": {
+                "_id": {
+                    "date": {"$substr": ["$timestamp", 0, 10]}, 
+                    "action": "$action"
+                },
+                "count": {"$sum": 1}
+            }
+        }
+    ]
+    health_data = await db.health_logs.aggregate(health_pipeline).to_list(None)
+
+    # 2. Aggregate Completed Tasks
+    task_pipeline = [
+        {
+            "$match": {
+                "completed": True,
+                "completedAt": {"$gte": start_str}
+            }
+        },
+        {
+            "$group": {
+                "_id": {
+                    "date": {"$substr": ["$completedAt", 0, 10]}
+                },
+                "count": {"$sum": 1}
+            }
+        }
+    ]
+    task_data = await db.tasks.aggregate(task_pipeline).to_list(None)
+    
+    # 3. Merge Data for last 7 days
+    stats = []
+    for i in range(7):
+        d = start_date + timedelta(days=i)
+        date_str = d.strftime("%Y-%m-%d")
+        day_data = {"date": date_str, "water": 0, "food": 0, "tasks": 0}
+        
+        # Fill Health Data
+        for log in health_data:
+            if log["_id"]["date"] == date_str:
+                day_data[log["_id"]["action"]] = log["count"]
+        
+        # Fill Task Data
+        for t in task_data:
+            if t["_id"]["date"] == date_str:
+                day_data["tasks"] = t["count"]
+        
+        stats.append(day_data)
+        
+    return stats
+
 @app.post("/api/mood")
 async def log_mood(mood: MoodLog):
     await db.mood_logs.insert_one(mood.dict())
