@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
-VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM") # Default voice
+VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "NsFgfJtoNUgSka0G7zSo") # Default voice
 
 async def text_to_speech(text: str):
     if not ELEVENLABS_API_KEY:

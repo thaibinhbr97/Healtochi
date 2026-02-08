@@ -26,5 +26,11 @@ export interface PetState {
     xp: number;
     xpToNextLevel: number;
     mood: string;
+    health: number;
+    waterCount: number;
+    foodCount: number;
+    lastEatenTime: number;
+    lastMoodCheckinTime: number;
+    lastWaterTime: number;
     tokens: number;
 }

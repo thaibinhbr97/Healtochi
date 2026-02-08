@@ -1,5 +1,5 @@
-import { BarChart2, CheckSquare, Cloud, Home, Mic, Plus, ShoppingBag } from 'lucide-react';
-import React, { useState } from 'react';
+import { BarChart2, CheckSquare, Clock, Cloud, Home, Mic, Plus, ShoppingBag } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
 import cheerDolphin from './assets/cheer_dolphin.gif';
 import BreathingExercise from './components/BreathingExercise';
 import PetDisplay from './components/PetDisplay';
@@ -25,8 +25,61 @@ const App: React.FC = () => {
         xp: 0,
         xpToNextLevel: 100,
         mood: 'happy',
+        health: 50,
+        waterCount: 0,
+        foodCount: 0,
+        lastEatenTime: 0,
+        lastMoodCheckinTime: 0,
+        lastWaterTime: 0,
         tokens: 45 // Initial tokens
     });
+
+    // Initialize cooldowns on first load if they're 0 to prevent immediate decay/lock
+    useEffect(() => {
+        if (pet.lastEatenTime === 0 || pet.lastWaterTime === 0) {
+            setPet(prev => ({
+                ...prev,
+                lastEatenTime: prev.lastEatenTime === 0 ? Date.now() : prev.lastEatenTime,
+                lastWaterTime: prev.lastWaterTime === 0 ? Date.now() : prev.lastWaterTime
+            }));
+        }
+    }, []);
+
+    // Health Decay Logic
+    useEffect(() => {
+        const checkHunger = () => {
+            const fourHours = 4 * 60 * 60 * 1000;
+            const now = Date.now();
+
+            if (now - pet.lastEatenTime > fourHours) {
+                setPet(prev => ({
+                    ...prev,
+                    health: Math.max(0, prev.health - 2) // Gradually lose 2% health
+                }));
+            }
+        };
+
+        const interval = setInterval(checkHunger, 5 * 60 * 1000); // Check every 5 minutes
+        return () => clearInterval(interval);
+    }, [pet.lastEatenTime]);
+
+    // Fetch tasks from MongoDB on mount
+    useEffect(() => {
+        const fetchTasks = async () => {
+            try {
+                const response = await fetch('http://127.0.0.1:8000/api/tasks');
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data && data.length > 0) {
+                        setTasks(data);
+                    }
+                }
+            } catch (err) {
+                console.error("Failed to load tasks from DB:", err);
+            }
+        };
+        fetchTasks();
+    }, []);
 
     // Task Handler
     const toggleTask = (taskId: string) => {
@@ -56,7 +109,6 @@ const App: React.FC = () => {
                 newXp = newXp - prev.xpToNextLevel;
                 newLevel += 1;
                 newNext = Math.floor(newNext * 1.2);
-                // Confetti effect could go here
             }
 
             return {
@@ -68,9 +120,62 @@ const App: React.FC = () => {
         });
     };
 
-    const logMood = (mood: MoodLog['mood']) => {
-        setMoodLogs(prev => [...prev, { date: new Date().toISOString(), mood }]);
-        addXP(15);
+    const logMood = async (mood: MoodLog['mood']) => {
+        const fourHours = 4 * 60 * 60 * 1000;
+        const now = Date.now();
+        const canCheckin = now - pet.lastMoodCheckinTime >= fourHours;
+
+        const newLog = { date: new Date().toISOString(), mood };
+        setMoodLogs(prev => [...prev, newLog]);
+
+        if (canCheckin) {
+            addXP(15);
+            setPet(prev => ({ ...prev, lastMoodCheckinTime: now }));
+        }
+
+        // PERSIST TO MONGODB
+        try {
+            await fetch('http://127.0.0.1:8000/api/mood', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    mood: mood,
+                    timestamp: newLog.date
+                })
+            });
+        } catch (err) {
+            console.error("Failed to save mood to MongoDB:", err);
+        }
+    };
+
+    const handleHealthAction = (type: 'water' | 'food') => {
+        setPet(prev => {
+            const isWater = type === 'water';
+            const currentCount = isWater ? prev.waterCount : prev.foodCount;
+
+            if (currentCount >= 3) return prev;
+
+            // Check 4-hour cooldown for food
+            if (!isWater) {
+                const fourHours = 4 * 60 * 60 * 1000;
+                const now = Date.now();
+                if (now - prev.lastEatenTime < fourHours) {
+                    return prev;
+                }
+            }
+
+            const newCount = currentCount + 1;
+            const healthBoost = 15; // Each action boosts health
+
+            return {
+                ...prev,
+                health: Math.min(100, prev.health + healthBoost),
+                waterCount: isWater ? newCount : prev.waterCount,
+                foodCount: !isWater ? newCount : prev.foodCount,
+                lastEatenTime: !isWater ? Date.now() : prev.lastEatenTime,
+                lastWaterTime: isWater ? Date.now() : prev.lastWaterTime
+            };
+        });
     };
 
     // Render Content based on Tab
@@ -81,7 +186,7 @@ const App: React.FC = () => {
                     <div className="flex flex-col h-full bg-white relative">
                         <header className="px-6 pt-6 pb-2 flex justify-between items-center bg-white z-10">
                             <div>
-                                <h1 className="text-2xl font-black text-slate-800 leading-tight">Hi There!</h1>
+                                <h1 className="text-2xl font-black text-slate-800 leading-tight">Hi Emma!</h1>
                                 <p className="text-slate-400 font-medium text-sm">How's your healing today?</p>
                             </div>
                             <div className="flex flex-col items-end">
@@ -97,27 +202,48 @@ const App: React.FC = () => {
                                 pet={pet}
                                 isTalking={isTalking}
                                 tasks={tasks}
+                                onHealthAction={handleHealthAction}
                             />
                         </div>
 
                         <div className="px-6 pb-28 space-y-4">
                             {/* Mood Section - Compact */}
-                            <div className="bg-slate-50/50 rounded-3xl p-4 border border-slate-100/50 backdrop-blur-sm">
+                            <div className="bg-slate-50/50 rounded-3xl p-4 border border-slate-100/50 backdrop-blur-sm relative overflow-hidden">
                                 <h3 className="font-black text-slate-500 text-[10px] uppercase tracking-widest mb-3 text-center">Daily Check-in</h3>
-                                <div className="flex justify-between px-2">
-                                    {['happy', 'neutral', 'tired', 'sad', 'anxious'].map((m) => (
-                                        <button
-                                            key={m}
-                                            onClick={() => logMood(m as any)}
-                                            className="flex flex-col items-center scale-90 hover:scale-110 transition-transform active:scale-95"
-                                        >
-                                            <div className="w-10 h-10 rounded-2xl bg-white shadow-sm flex items-center justify-center text-xl border border-slate-100">
-                                                {m === 'happy' ? '😄' : m === 'neutral' ? '😐' : m === 'tired' ? '🥱' : m === 'sad' ? '😢' : '😰'}
-                                            </div>
-                                            <span className="text-[10px] uppercase font-black text-slate-400 mt-2 tracking-tighter">{m}</span>
-                                        </button>
-                                    ))}
-                                </div>
+
+                                {(() => {
+                                    const fourHours = 4 * 60 * 60 * 1000;
+                                    const elapsed = Date.now() - pet.lastMoodCheckinTime;
+                                    const remaining = fourHours - elapsed;
+                                    const isLocked = remaining > 0;
+
+                                    return (
+                                        <div className="flex justify-between px-2 relative">
+                                            {['happy', 'neutral', 'tired', 'sad', 'anxious'].map((m) => (
+                                                <button
+                                                    key={m}
+                                                    onClick={() => !isLocked && logMood(m as any)}
+                                                    disabled={isLocked}
+                                                    className={`flex flex-col items-center scale-90 transition-all ${isLocked ? 'opacity-40 grayscale cursor-not-allowed' : 'hover:scale-110 active:scale-95'}`}
+                                                >
+                                                    <div className="w-10 h-10 rounded-2xl bg-white shadow-sm flex items-center justify-center text-xl border border-slate-100">
+                                                        {m === 'happy' ? '😄' : m === 'neutral' ? '😐' : m === 'tired' ? '🥱' : m === 'sad' ? '😢' : '😰'}
+                                                    </div>
+                                                    <span className="text-[10px] uppercase font-black text-slate-400 mt-2 tracking-tighter">{m}</span>
+                                                </button>
+                                            ))}
+
+                                            {isLocked && (
+                                                <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
+                                                    <div className="bg-slate-800/90 text-white px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest shadow-xl flex items-center gap-2 border border-slate-600">
+                                                        <Clock size={10} className="animate-pulse" />
+                                                        <span>Next Check-in in {Math.floor(remaining / 3600000)}h {Math.floor((remaining % 3600000) / 60000)}m</span>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })()}
                             </div>
 
                             {/* Main CTA - Talk to Finny */}
@@ -163,7 +289,36 @@ const App: React.FC = () => {
                                 </div>
                             ))}
                         </div>
-                        <button className="mt-6 w-full py-3 border-2 border-dashed border-slate-300 text-slate-400 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-slate-50">
+                        <button
+                            onClick={async () => {
+                                const title = prompt("What's your new health goal?");
+                                if (!title) return;
+
+                                const newTask = {
+                                    title,
+                                    points: 10,
+                                    icon: '✨',
+                                    completed: false
+                                };
+
+                                try {
+                                    const response = await fetch('http://127.0.0.1:8000/api/tasks', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify(newTask)
+                                    });
+                                    if (response.ok) {
+                                        const result = await response.json();
+                                        setTasks(prev => [...prev, { ...newTask, id: result.id }]);
+                                    }
+                                } catch (err) {
+                                    console.error("Failed to add task to DB:", err);
+                                    // Fallback for demo
+                                    setTasks(prev => [...prev, { ...newTask, id: Math.random().toString() }]);
+                                }
+                            }}
+                            className="mt-6 w-full py-3 border-2 border-dashed border-slate-300 text-slate-400 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-slate-50"
+                        >
                             <Plus size={20} /> Add Custom Goal
                         </button>
                     </div>

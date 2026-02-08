@@ -38,7 +38,7 @@ class MoodLog(BaseModel):
     timestamp: str
 
 class Task(BaseModel):
-    id: str
+    id: Optional[str] = None
     title: str
     completed: bool
     points: int
@@ -61,6 +61,23 @@ async def log_mood(mood: MoodLog):
     await db.mood_logs.insert_one(mood.dict())
     return {"status": "success"}
 
+# Initial data for seeding
+INITIAL_TASKS = [
+    {"title": "Drink a glass of water", "points": 5, "icon": "💧", "completed": False},
+    {"title": "Take your medicine", "points": 10, "icon": "💊", "completed": False},
+    {"title": "Rest for 10 minutes", "points": 10, "icon": "🛌", "completed": False},
+    {"title": "Brush your teeth", "points": 5, "icon": "🪥", "completed": False},
+    {"title": "Say one thing you like", "points": 5, "icon": "❤️", "completed": False},
+]
+
+@app.on_event("startup")
+async def startup_db_client():
+    # Seed tasks if collection is empty
+    count = await db.tasks.count_documents({})
+    if count == 0:
+        await db.tasks.insert_many(INITIAL_TASKS)
+        print("Database seeded with initial tasks!")
+
 @app.get("/api/tasks")
 async def get_tasks():
     tasks = await db.tasks.find().to_list(100)
@@ -68,6 +85,21 @@ async def get_tasks():
         task["id"] = str(task["_id"])
         del task["_id"]
     return tasks
+
+@app.post("/api/tasks")
+async def create_task(task: Task):
+    new_task = task.dict()
+    # Remove None id so MongoDB generates strictly its own _id
+    if "id" in new_task:
+        del new_task["id"]
+    result = await db.tasks.insert_one(new_task)
+    return {"id": str(result.inserted_id), "status": "success"}
+
+@app.post("/api/tasks/seed")
+async def seed_tasks():
+    await db.tasks.delete_many({}) # Clear existing
+    await db.tasks.insert_many(INITIAL_TASKS)
+    return {"status": "Database re-seeded!"}
 
 @app.post("/api/talk")
 async def talk_to_mascot(text: str):
