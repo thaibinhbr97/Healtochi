@@ -85,7 +85,11 @@ const App: React.FC = () => {
                             </div>
                         </header>
 
-                        <PetDisplay pet={pet} isTalking={isTalking} />
+                        <PetDisplay
+                            pet={pet}
+                            isTalking={isTalking}
+                            tasks={tasks}
+                        />
 
                         <div className="px-6 mt-4">
                             <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
