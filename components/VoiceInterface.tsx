@@ -1,6 +1,8 @@
 import { Loader2, Mic, MicOff, Volume2, XCircle } from 'lucide-react';
 import React, { useEffect, useRef, useState } from 'react';
 
+import { INITIAL_TASKS } from '../constants';
+
 interface VoiceInterfaceProps {
     onTalkingStateChange: (isTalking: boolean) => void;
     onClose: () => void;
@@ -12,14 +14,28 @@ const VoiceInterface: React.FC<VoiceInterfaceProps> = ({ onTalkingStateChange, o
     const [transcription, setTranscription] = useState('');
     const [responseLabel, setResponseLabel] = useState('');
     const [error, setError] = useState<string | null>(null);
+    const [thinkingTaskIndex, setThinkingTaskIndex] = useState(0);
 
     const recognitionRef = useRef<any>(null);
     const audioContextRef = useRef<AudioContext | null>(null);
     const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
 
+    // Cycle through health tasks while AI is thinking
+    useEffect(() => {
+        let interval: any;
+        if (isProcessing) {
+            interval = setInterval(() => {
+                setThinkingTaskIndex((prev) => (prev + 1) % INITIAL_TASKS.length);
+            }, 1200);
+        } else {
+            setThinkingTaskIndex(0);
+        }
+        return () => clearInterval(interval);
+    }, [isProcessing]);
+
     useEffect(() => {
         // Initialize Speech Recognition
-        const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+        const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitRecognition || (window as any).webkitSpeechRecognition;
         if (SpeechRecognition) {
             recognitionRef.current = new SpeechRecognition();
             recognitionRef.current.continuous = false;
@@ -27,7 +43,7 @@ const VoiceInterface: React.FC<VoiceInterfaceProps> = ({ onTalkingStateChange, o
             recognitionRef.current.lang = 'en-US';
 
             recognitionRef.current.onresult = (event: any) => {
-                const text = event.results[0][0].transcript;
+                const text = event.results[event.results.length - 1][0].transcript;
                 setTranscription(text);
                 handleTalk(text);
             };
@@ -35,6 +51,7 @@ const VoiceInterface: React.FC<VoiceInterfaceProps> = ({ onTalkingStateChange, o
             recognitionRef.current.onerror = (event: any) => {
                 console.error('Speech recognition error', event.error);
                 setIsListening(false);
+                setError(`Mic Error: ${event.error}`);
             };
 
             recognitionRef.current.onend = () => {
@@ -154,9 +171,25 @@ const VoiceInterface: React.FC<VoiceInterfaceProps> = ({ onTalkingStateChange, o
                     )}
 
                     {isProcessing && (
-                        <div className="flex items-center justify-center gap-2 text-indigo-500 font-bold animate-pulse">
-                            <Loader2 className="animate-spin" />
-                            <span>Mascot is thinking...</span>
+                        <div className="bg-indigo-50 p-5 rounded-3xl border-2 border-dashed border-indigo-200 animate-pulse transition-all">
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-md">
+                                    <span className="text-2xl animate-bounce">{INITIAL_TASKS[thinkingTaskIndex].icon}</span>
+                                </div>
+                                <div className="flex-1 overflow-hidden">
+                                    <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest leading-none mb-1">Checking health goals...</p>
+                                    <p className="text-slate-700 font-black text-base truncate transition-all duration-500">
+                                        {INITIAL_TASKS[thinkingTaskIndex].title}
+                                    </p>
+                                </div>
+                                <Loader2 className="animate-spin text-indigo-500" size={24} />
+                            </div>
+                            <div className="w-full h-1.5 bg-slate-200 mt-4 rounded-full overflow-hidden">
+                                <div
+                                    className="h-full bg-indigo-500 transition-all duration-1000 ease-in-out"
+                                    style={{ width: `${((thinkingTaskIndex + 1) / INITIAL_TASKS.length) * 100}%` }}
+                                />
+                            </div>
                         </div>
                     )}
 
