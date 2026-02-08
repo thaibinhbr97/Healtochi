@@ -1,265 +1,228 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { GoogleGenAI, LiveServerMessage, Modality } from '@google/genai';
-import { Mic, MicOff, Volume2, Loader2, XCircle } from 'lucide-react';
-import { GEMINI_MODEL_AUDIO, SYSTEM_INSTRUCTION } from '../constants';
-import { createBlob, decode, decodeAudioData } from '../utils/audioUtils';
+import { Loader2, Mic, MicOff, XCircle } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+
+import { INITIAL_TASKS } from '../constants';
 
 interface VoiceInterfaceProps {
-  onTalkingStateChange: (isTalking: boolean) => void;
-  onClose: () => void;
+    onTalkingStateChange: (isTalking: boolean) => void;
+    onClose: () => void;
 }
 
 const VoiceInterface: React.FC<VoiceInterfaceProps> = ({ onTalkingStateChange, onClose }) => {
-  const [isActive, setIsActive] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [transcription, setTranscription] = useState<string>('');
-  
-  // Audio Context Refs
-  const inputAudioContextRef = useRef<AudioContext | null>(null);
-  const outputAudioContextRef = useRef<AudioContext | null>(null);
-  const scriptProcessorRef = useRef<ScriptProcessorNode | null>(null);
-  const sourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  
-  // Playback Refs
-  const nextStartTimeRef = useRef<number>(0);
-  const sourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
-  
-  // Client Ref
-  const sessionRef = useRef<any>(null);
+    const [isListening, setIsListening] = useState(false);
+    const [isProcessing, setIsProcessing] = useState(false);
+    const [transcription, setTranscription] = useState('');
+    const [responseLabel, setResponseLabel] = useState('');
+    const [error, setError] = useState<string | null>(null);
+    const [thinkingTaskIndex, setThinkingTaskIndex] = useState(0);
 
-  const stopAudioProcessing = useCallback(() => {
-    if (scriptProcessorRef.current) {
-      scriptProcessorRef.current.disconnect();
-      scriptProcessorRef.current = null;
-    }
-    if (sourceNodeRef.current) {
-      sourceNodeRef.current.disconnect();
-      sourceNodeRef.current = null;
-    }
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
-    }
-    if (inputAudioContextRef.current) {
-      inputAudioContextRef.current.close();
-      inputAudioContextRef.current = null;
-    }
-    
-    // Stop playback
-    sourcesRef.current.forEach(source => source.stop());
-    sourcesRef.current.clear();
-    
-    if (outputAudioContextRef.current) {
-      outputAudioContextRef.current.close();
-      outputAudioContextRef.current = null;
-    }
-    
-    if (sessionRef.current) {
-      // Trying to close session if method exists, though library handles close on disconnect usually
-      try {
-          // sessionRef.current.close(); 
-      } catch (e) {}
-      sessionRef.current = null;
-    }
+    const recognitionRef = useRef<any>(null);
+    const audioContextRef = useRef<AudioContext | null>(null);
+    const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
 
-    onTalkingStateChange(false);
-  }, [onTalkingStateChange]);
+    // Cycle through health tasks while AI is thinking
+    useEffect(() => {
+        let interval: any;
+        if (isProcessing) {
+            interval = setInterval(() => {
+                setThinkingTaskIndex((prev) => (prev + 1) % INITIAL_TASKS.length);
+            }, 1200);
+        } else {
+            setThinkingTaskIndex(0);
+        }
+        return () => clearInterval(interval);
+    }, [isProcessing]);
 
-  const startSession = async () => {
-    setError(null);
-    setIsActive(true);
-    
-    try {
-      const apiKey = process.env.API_KEY;
-      if (!apiKey) throw new Error("API Key not found");
+    useEffect(() => {
+        // Initialize Speech Recognition
+        const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitRecognition || (window as any).webkitSpeechRecognition;
+        if (SpeechRecognition) {
+            recognitionRef.current = new SpeechRecognition();
+            recognitionRef.current.continuous = false;
+            recognitionRef.current.interimResults = false;
+            recognitionRef.current.lang = 'en-US';
 
-      const ai = new GoogleGenAI({ apiKey });
-
-      // Initialize Audio Contexts
-      inputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
-      outputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-      
-      const outputNode = outputAudioContextRef.current.createGain();
-      outputNode.connect(outputAudioContextRef.current.destination);
-
-      // Get Mic Stream
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
-
-      const sessionPromise = ai.live.connect({
-        model: GEMINI_MODEL_AUDIO,
-        callbacks: {
-          onopen: () => {
-            console.log("Gemini Live Connected");
-            if (!inputAudioContextRef.current || !streamRef.current) return;
-
-            const source = inputAudioContextRef.current.createMediaStreamSource(streamRef.current);
-            sourceNodeRef.current = source;
-            
-            const scriptProcessor = inputAudioContextRef.current.createScriptProcessor(4096, 1, 1);
-            scriptProcessorRef.current = scriptProcessor;
-
-            scriptProcessor.onaudioprocess = (e) => {
-              const inputData = e.inputBuffer.getChannelData(0);
-              const pcmBlob = createBlob(inputData);
-              sessionPromise.then(session => {
-                 session.sendRealtimeInput({ media: pcmBlob });
-              });
+            recognitionRef.current.onresult = (event: any) => {
+                const text = event.results[event.results.length - 1][0].transcript;
+                setTranscription(text);
+                handleTalk(text);
             };
 
-            source.connect(scriptProcessor);
-            scriptProcessor.connect(inputAudioContextRef.current.destination);
-          },
-          onmessage: async (message: LiveServerMessage) => {
-             // Handle Audio Output
-             const base64Audio = message.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
-             if (base64Audio && outputAudioContextRef.current) {
-                onTalkingStateChange(true);
-                const ctx = outputAudioContextRef.current;
-                
-                // Ensure nextStartTime is valid
-                nextStartTimeRef.current = Math.max(nextStartTimeRef.current, ctx.currentTime);
+            recognitionRef.current.onerror = (event: any) => {
+                console.error('Speech recognition error', event.error);
+                setIsListening(false);
+                setError(`Mic Error: ${event.error}`);
+            };
 
-                const audioBuffer = await decodeAudioData(
-                    decode(base64Audio),
-                    ctx,
-                    24000,
-                    1
-                );
-                
-                const source = ctx.createBufferSource();
-                source.buffer = audioBuffer;
-                source.connect(outputNode);
-                
-                source.addEventListener('ended', () => {
-                    sourcesRef.current.delete(source);
-                    if (sourcesRef.current.size === 0) {
-                        onTalkingStateChange(false);
-                    }
-                });
-                
-                source.start(nextStartTimeRef.current);
-                sourcesRef.current.add(source);
-                nextStartTimeRef.current += audioBuffer.duration;
-             }
+            recognitionRef.current.onend = () => {
+                setIsListening(false);
+            };
 
-             // Handle Transcription (if any)
-             if (message.serverContent?.modelTurn?.parts?.[0]?.text) {
-                 setTranscription(message.serverContent.modelTurn.parts[0].text);
-             }
-
-             // Handle Interruption
-             if (message.serverContent?.interrupted) {
-                 sourcesRef.current.forEach(s => s.stop());
-                 sourcesRef.current.clear();
-                 nextStartTimeRef.current = 0;
-                 onTalkingStateChange(false);
-             }
-          },
-          onclose: () => {
-            console.log("Gemini Live Closed");
-            setIsActive(false);
-          },
-          onerror: (err) => {
-            console.error("Gemini Live Error", err);
-            setError("Connection error. Please try again.");
-            setIsActive(false);
-            stopAudioProcessing();
-          }
-        },
-        config: {
-          responseModalities: [Modality.AUDIO],
-          systemInstruction: SYSTEM_INSTRUCTION,
-          speechConfig: {
-              voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' }} // Using a gentle voice
-          }
+            // Auto-start listening after a tiny delay for smooth UI transition
+            setTimeout(() => {
+                try {
+                    recognitionRef.current?.start();
+                    setIsListening(true);
+                } catch (e) {
+                    console.error("Auto-start mic failed:", e);
+                }
+            }, 500);
         }
-      });
-      
-      // Store session logic if needed later, but relying on callbacks mostly
-      sessionRef.current = sessionPromise;
 
-    } catch (err: any) {
-      console.error(err);
-      setError(err.message || "Failed to start voice chat");
-      setIsActive(false);
-    }
-  };
+        return () => {
+            if (recognitionRef.current) recognitionRef.current.stop();
+            if (audioSourceRef.current) audioSourceRef.current.stop();
+        };
+    }, []);
 
-  useEffect(() => {
-    // Cleanup on unmount
-    return () => {
-      stopAudioProcessing();
+    const handleTalk = async (text: string) => {
+        setIsProcessing(true);
+        setError(null);
+
+        try {
+            const response = await fetch(`http://127.0.0.1:8000/api/talk?text=${encodeURIComponent(text)}`, {
+                method: 'POST',
+            });
+
+            if (!response.ok) throw new Error('Failed to talk to mascot');
+
+            // Get response text from header
+            const rawAiText = response.headers.get('X-Response-Text');
+            if (rawAiText) {
+                const aiText = decodeURIComponent(rawAiText);
+                setResponseLabel(aiText);
+                // Play audio
+                const audioData = await response.arrayBuffer();
+                playAudio(audioData);
+            } else {
+                // Fallback to JSON if no audio header
+                const data = await response.json();
+                setResponseLabel(data.text);
+            }
+        } catch (err: any) {
+            setError(err.message);
+        } finally {
+            setIsProcessing(false);
+        }
     };
-  }, [stopAudioProcessing]);
 
-  return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex flex-col items-center justify-center p-4">
-      <div className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl relative flex flex-col items-center gap-6">
-        
-        <button 
-            onClick={() => { stopAudioProcessing(); onClose(); }}
-            className="absolute top-4 right-4 text-slate-400 hover:text-red-500"
-        >
-            <XCircle size={32} />
-        </button>
+    const playAudio = async (data: ArrayBuffer) => {
+        if (!audioContextRef.current) {
+            audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+        }
 
-        <div className="text-center mt-4">
-            <h3 className="text-2xl font-bold text-slate-800">Voice Chat</h3>
-            <p className="text-slate-500">Say "Hello" to Healtogochi!</p>
-        </div>
+        const context = audioContextRef.current;
+        const buffer = await context.decodeAudioData(data);
 
-        {/* Visualizer Circle */}
-        <div className={`w-40 h-40 rounded-full flex items-center justify-center transition-all duration-300 ${isActive ? 'bg-indigo-50 border-4 border-indigo-200' : 'bg-slate-100'}`}>
-            {isActive ? (
-                <div className="relative w-full h-full flex items-center justify-center">
-                    <span className="absolute inset-0 rounded-full bg-indigo-400 opacity-20 animate-ping"></span>
-                    <Volume2 size={64} className="text-indigo-600 z-10 animate-pulse" />
+        if (audioSourceRef.current) {
+            audioSourceRef.current.stop();
+        }
+
+        const source = context.createBufferSource();
+        source.buffer = buffer;
+        source.connect(context.destination);
+
+        source.onended = () => {
+            onTalkingStateChange(false);
+        };
+
+        onTalkingStateChange(true);
+        source.start(0);
+        audioSourceRef.current = source;
+    };
+
+    const toggleListening = () => {
+        if (isListening) {
+            recognitionRef.current?.stop();
+        } else {
+            setTranscription('');
+            setResponseLabel('');
+            recognitionRef.current?.start();
+            setIsListening(true);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex flex-col items-center justify-center p-4">
+            <div className="bg-white rounded-[2.5rem] p-8 w-full max-w-md shadow-2xl relative flex flex-col items-center gap-6 border-4 border-indigo-100">
+
+                <button
+                    onClick={onClose}
+                    className="absolute top-6 right-6 text-slate-300 hover:text-red-500 transition-colors"
+                >
+                    <XCircle size={36} />
+                </button>
+
+                <div className="text-center mt-2">
+                    <h3 className="text-3xl font-black text-slate-800 tracking-tight">Mascot Chat</h3>
+                    <p className="text-slate-400 font-bold uppercase text-xs tracking-widest mt-1">ElevenLabs Character Voice</p>
                 </div>
-            ) : (
-                <MicOff size={48} className="text-slate-400" />
-            )}
-        </div>
 
-        {transcription && (
-            <div className="bg-indigo-50 p-3 rounded-lg w-full text-center">
-                <p className="text-sm text-indigo-700 italic">"{transcription}"</p>
+                {/* Visualizer Circle */}
+                <div className={`w-48 h-48 rounded-full flex items-center justify-center transition-all duration-500 relative ${isListening ? 'bg-indigo-50 scale-110 shadow-inner' : 'bg-slate-50'}`}>
+                    {isListening && (
+                        <div className="absolute inset-0 rounded-full border-4 border-indigo-400 animate-ping opacity-20"></div>
+                    )}
+
+                    <button
+                        onClick={toggleListening}
+                        className={`w-32 h-32 rounded-full flex items-center justify-center transition-all duration-300 shadow-xl ${isListening ? 'bg-red-500 text-white' : 'bg-indigo-600 text-white hover:scale-105'}`}
+                    >
+                        {isListening ? <MicOff size={48} /> : <Mic size={48} />}
+                    </button>
+                </div>
+
+                <div className="w-full space-y-4">
+                    {transcription && (
+                        <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 relative">
+                            <p className="text-sm font-bold text-slate-400 uppercase text-[10px] mb-1">You said</p>
+                            <p className="text-slate-700 font-medium">"{transcription}"</p>
+                        </div>
+                    )}
+
+                    {isProcessing && (
+                        <div className="bg-indigo-50 p-5 rounded-3xl border-2 border-dashed border-indigo-200 animate-pulse transition-all">
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-md">
+                                    <span className="text-2xl animate-bounce">{INITIAL_TASKS[thinkingTaskIndex].icon}</span>
+                                </div>
+                                <div className="flex-1 overflow-hidden">
+                                    <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest leading-none mb-1">Checking health goals...</p>
+                                    <p className="text-slate-700 font-black text-base truncate transition-all duration-500">
+                                        {INITIAL_TASKS[thinkingTaskIndex].title}
+                                    </p>
+                                </div>
+                                <Loader2 className="animate-spin text-indigo-500" size={24} />
+                            </div>
+                            <div className="w-full h-1.5 bg-slate-200 mt-4 rounded-full overflow-hidden">
+                                <div
+                                    className="h-full bg-indigo-500 transition-all duration-1000 ease-in-out"
+                                    style={{ width: `${((thinkingTaskIndex + 1) / INITIAL_TASKS.length) * 100}%` }}
+                                />
+                            </div>
+                        </div>
+                    )}
+
+                    {responseLabel && (
+                        <div className="bg-indigo-600 p-5 rounded-2xl shadow-lg relative overflow-hidden text-center">
+                            <p className="text-sm font-bold text-indigo-200 uppercase text-[10px] mb-1">Mascot says</p>
+                            <p className="text-white font-bold text-lg leading-tight">"{responseLabel}"</p>
+                        </div>
+                    )}
+                </div>
+
+                {error && (
+                    <div className="bg-red-50 p-4 rounded-2xl w-full border border-red-100">
+                        <p className="text-sm text-red-500 font-bold text-center">{error}</p>
+                    </div>
+                )}
+
+                <div className="text-[10px] text-slate-300 font-black uppercase tracking-widest">
+                    Gemini Flash &bull; ElevenLabs &bull; Web Speech
+                </div>
             </div>
-        )}
-
-        {error && (
-             <div className="bg-red-50 p-3 rounded-lg w-full text-center">
-                <p className="text-sm text-red-500">{error}</p>
-            </div>
-        )}
-
-        <div className="w-full">
-            {!isActive ? (
-                <button 
-                    onClick={startSession}
-                    className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-bold text-lg shadow-lg flex items-center justify-center gap-2 transition-transform active:scale-95"
-                >
-                    <Mic size={24} />
-                    Start Talking
-                </button>
-            ) : (
-                 <button 
-                    onClick={() => { stopAudioProcessing(); setIsActive(false); }}
-                    className="w-full py-4 bg-red-500 hover:bg-red-600 text-white rounded-2xl font-bold text-lg shadow-lg flex items-center justify-center gap-2 transition-transform active:scale-95"
-                >
-                    <MicOff size={24} />
-                    End Chat
-                </button>
-            )}
         </div>
-        
-        <div className="text-xs text-slate-400 text-center">
-            Powered by Gemini Live API &bull; Audio Output enabled
-        </div>
-      </div>
-    </div>
-  );
+    );
 };
 
 export default VoiceInterface;

@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+motor
+pymongo
+google-generativeai
+elevenlabs
+python-dotenv
+httpx
+solana
+anchorpy
+pydantic
+python-multipart
