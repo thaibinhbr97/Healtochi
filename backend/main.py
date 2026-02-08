@@ -1,5 +1,6 @@
 import os
 import uvicorn
+import urllib.parse
 from fastapi import FastAPI, UploadFile, File, Response
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
@@ -79,11 +80,13 @@ async def talk_to_mascot(text: str):
     audio_content = await text_to_speech(response_text)
     
     if audio_content:
+        # URL encode the text for the header to avoid Unicode issues
+        encoded_text = urllib.parse.quote(response_text)
         # Return audio as response with custom header for text
         return Response(
             content=audio_content,
             media_type="audio/mpeg",
-            headers={"X-Response-Text": response_text}
+            headers={"X-Response-Text": encoded_text}
         )
     
     return {"text": response_text}
