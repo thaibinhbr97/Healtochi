@@ -7,7 +7,17 @@ You are a cartoon dolphin character. You are a cute, and empathetic buddy for a 
 export const INITIAL_TASKS = [
     { id: '1', title: 'Drink a glass of water', completed: false, points: 5, icon: '💧' },
     { id: '2', title: 'Take your medicine', completed: false, points: 10, icon: '💊' },
-    { id: '3', title: 'Rest for 10 minutes', completed: false, points: 10, icon: '🛌' },
-    { id: '4', title: 'Brush your teeth', completed: false, points: 5, icon: '🪥' },
-    { id: '5', title: 'Say one thing you like', completed: false, points: 5, icon: '❤️' },
+    { id: '3', title: 'Do 5 deep breaths', completed: false, points: 10, icon: '🌬️' },
+    { id: '4', title: 'Stretch your body', completed: false, points: 10, icon: '🧘' },
+    { id: '5', title: 'Tell me how you feel', completed: false, points: 15, icon: '💬' },
+    { id: '6', title: 'Rest for 10 minutes', completed: false, points: 10, icon: '🛌' },
+    { id: '7', title: 'Eat a healthy snack', completed: false, points: 10, icon: '🍎' },
+    { id: '8', title: 'Draw a happy picture', completed: false, points: 15, icon: '🎨' },
+];
+
+export const SHOP_ITEMS = [
+    { name: 'Magic Snack', icon: '🍎', cost: 10, description: 'Makes your pet super happy!', effect: '+20 XP' },
+    { name: 'Energy Drink', icon: '🧃', cost: 15, description: 'Gives your pet extra energy!', effect: '+30 XP' },
+    { name: 'Comfy Pillow', icon: 'pill', cost: 25, description: 'Help your pet rest better.', effect: '+50 XP' },
+    { name: 'Star Toy', icon: '⭐', cost: 50, description: 'A rare star from the Solana galaxy.', effect: 'Level Up!' },
 ];

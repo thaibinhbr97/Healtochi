@@ -6,7 +6,7 @@ import PetDisplay from './components/PetDisplay';
 import SolanaShop from './components/SolanaShop';
 import Stats from './components/Stats';
 import VoiceInterface from './components/VoiceInterface';
-import { INITIAL_TASKS } from './constants';
+import { INITIAL_TASKS, SHOP_ITEMS } from './constants';
 import { MoodLog, PetState, Tab, Task } from './types';
 import { AUDIO_SOURCES, playSound } from './utils/audio';
 
@@ -23,6 +23,8 @@ const App: React.FC = () => {
     const [isParentMode, setIsParentMode] = useState(false);
     const [solanaTx, setSolanaTx] = useState<string | null>(null);
     const [isRewarding, setIsRewarding] = useState(false);
+    const [showPurchaseSuccess, setShowPurchaseSuccess] = useState(false);
+    const [purchasedItem, setPurchasedItem] = useState<{ name: string, icon: string } | null>(null);
 
     // Pet State
     const [pet, setPet] = useState<PetState>({
@@ -399,9 +401,13 @@ const App: React.FC = () => {
                 );
             case Tab.SHOP:
                 return <SolanaShop tokens={pet.tokens} onPurchase={(cost, name) => {
+                    const item = SHOP_ITEMS.find(i => i.name === name) || { icon: '🎁' };
                     setPet(prev => ({ ...prev, tokens: prev.tokens - cost }));
                     addXP(cost * 2);
-                    alert(`You bought ${name}! Your pet is happy!`);
+                    setPurchasedItem({ name, icon: item.icon });
+                    setShowPurchaseSuccess(true);
+                    playSound(AUDIO_SOURCES.CELEBRATION, 3000);
+                    setTimeout(() => setShowPurchaseSuccess(false), 4000);
                 }} />;
         }
     };
@@ -567,6 +573,40 @@ const App: React.FC = () => {
                         <div className="flex items-center gap-2 text-yellow-500 font-black text-2xl animate-pulse">
                             <span>+10</span>
                             <span className="text-sm uppercase tracking-tighter">Bonus Points</span>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Purchase Success Overlay */}
+            {showPurchaseSuccess && purchasedItem && (
+                <div className="fixed inset-0 z-[110] flex items-center justify-center p-6 animate-in fade-in zoom-in duration-300">
+                    <div className="absolute inset-0 bg-emerald-900/40 backdrop-blur-md"></div>
+                    <div className="bg-white rounded-[3rem] p-8 flex flex-col items-center gap-6 shadow-2xl relative z-10 border-4 border-emerald-400">
+                        <div className="absolute -top-12 -right-6 animate-bounce">
+                            <span className="text-6xl">🍭</span>
+                        </div>
+                        <div className="absolute -top-12 -left-6 animate-bounce delay-150">
+                            <span className="text-6xl">💖</span>
+                        </div>
+
+                        <div className="text-center">
+                            <h2 className="text-3xl font-black text-slate-800 tracking-tight">Yummy!</h2>
+                            <p className="text-emerald-600 font-bold uppercase text-xs tracking-widest mt-1">Purchase Successful</p>
+                        </div>
+
+                        <div className="w-40 h-40 rounded-full bg-emerald-50 flex items-center justify-center text-7xl shadow-inner border-4 border-white">
+                            {purchasedItem.icon === 'pill' ? '💊' : purchasedItem.icon}
+                        </div>
+
+                        <div className="bg-slate-50 p-4 rounded-2xl w-full text-center border-2 border-dashed border-slate-200">
+                            <p className="text-slate-500 font-bold text-xs uppercase mb-1">{pet.name} received:</p>
+                            <p className="text-slate-800 font-black text-xl">{purchasedItem.name}</p>
+                        </div>
+
+                        <div className="flex items-center gap-2 text-emerald-500 font-black text-2xl animate-pulse">
+                            <span>+{(pet.xpToNextLevel / 10).toFixed(0)}</span>
+                            <span className="text-sm uppercase tracking-tighter">Happiness XP</span>
                         </div>
                     </div>
                 </div>

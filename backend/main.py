@@ -269,5 +269,25 @@ async def reward(req: RewardRequest):
     result = await reward_user(req.user_address, req.amount)
     return result
 
+@app.get("/api/balance/{user_address}")
+async def get_balance(user_address: str):
+    from utils.solana_utils import get_token_balance
+    result = await get_token_balance(user_address)
+    return result
+
+class SpendRequest(BaseModel):
+    user_address: str
+    amount: int
+    item_name: str
+
+@app.post("/api/spend")
+async def spend(req: SpendRequest):
+    from utils.solana_utils import spend_tokens
+    result = await spend_tokens(req.user_address, req.amount)
+    if result["status"] == "success":
+        # Log the purchase
+        print(f"User {req.user_address[:8]}... spent {req.amount} on {req.item_name}")
+    return result
+
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
