@@ -11,7 +11,7 @@ Healtogochi is a self-care companion for sick kids, inspired by Finch and Tamago
 
 ### 2. [MLH] Best Use of Gemini API
 - **Implementation**: The "Brain" of the mascot.
-- **Model**: `gemini-1.5-flash`.
+- **Model**: `gemini-2.5-flash`.
 - **Logic**: Analyzes child's input to provide empathetic, character-driven responses and motivates them through self-care tasks.
 
 ### 3. [MLH] Best Use of ElevenLabs

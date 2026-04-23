@@ -34,7 +34,7 @@ Helping chronically ill children maintain physical and emotional wellbeing throu
 
 - **Frontend**: React, Vite, TypeScript, TailwindCSS, Lucide Icons
 - **Backend**: Python (FastAPI), Uvicorn
-- **AI & ML**: Google Gemini 1.5 Flash, ElevenLabs TTS
+- **AI & ML**: Google Gemini 2.5 Flash, ElevenLabs TTS
 - **Blockchain**: Solana (Devnet), SPL Token
 - **Database**: MongoDB Atlas (Cloud)
 - **Deployment**: Docker, Vultr (Backend), Vercel (Frontend)

@@ -94,7 +94,10 @@ const VoiceInterface: React.FC<VoiceInterfaceProps> = ({ onTalkingStateChange, o
                 })
             });
 
-            if (!response.ok) throw new Error('Failed to talk to mascot');
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(errorText || 'Failed to talk to mascot');
+            }
 
             // Get response text from header
             const rawAiText = response.headers.get('X-Response-Text');

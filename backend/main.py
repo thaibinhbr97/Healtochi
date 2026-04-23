@@ -2,6 +2,7 @@ import os
 from datetime import datetime, timezone, timedelta
 import uvicorn
 import urllib.parse
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, UploadFile, File, Response
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
@@ -14,7 +15,16 @@ from utils.solana_utils import reward_user
 
 load_dotenv()
 
-app = FastAPI(title="Healtogochi API")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Seed tasks if collection is empty
+    count = await db.tasks.count_documents({})
+    if count == 0:
+        await db.tasks.insert_many(INITIAL_TASKS)
+        print("Database seeded with initial tasks!")
+    yield
+
+app = FastAPI(title="Healtogochi API", lifespan=lifespan)
 
 # CORS
 app.add_middleware(
@@ -32,7 +42,7 @@ db = client.healtogochi
 
 # GenAI Setup
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-model = genai.GenerativeModel('gemini-flash-latest', system_instruction=os.getenv("SYSTEM_INSTRUCTION", "You are Healtogochi, a cute healing pet for kids."))
+model = genai.GenerativeModel('gemini-2.5-flash', system_instruction=os.getenv("SYSTEM_INSTRUCTION", "You are Healtogochi, a cute healing pet for kids."))
 
 class MoodLog(BaseModel):
     mood: str
@@ -174,13 +184,7 @@ INITIAL_TASKS = [
     {"title": "Say one thing you like", "points": 5, "icon": "❤️", "completed": False},
 ]
 
-@app.on_event("startup")
-async def startup_db_client():
-    # Seed tasks if collection is empty
-    count = await db.tasks.count_documents({})
-    if count == 0:
-        await db.tasks.insert_many(INITIAL_TASKS)
-        print("Database seeded with initial tasks!")
+
 
 @app.get("/api/tasks")
 async def get_tasks():
@@ -216,44 +220,71 @@ class ChatRequest(BaseModel):
 
 @app.post("/api/talk")
 async def talk_to_mascot(request: ChatRequest):
-    text = request.text
-    tasks = request.tasks
-    
-    # Construct Context from Tasks
-    task_context = "The child has the following goals:\n"
-    for t in tasks:
-        status = "COMPLETED" if t.completed else "NOT DONE"
-        task_context += f"- {t.title} ({status})\n"
-    
-    system_prompt = os.getenv("SYSTEM_INSTRUCTION", "You are Healtogochi.")
-    full_prompt = f"{system_prompt}\n\nCONTEXT:\n{task_context}\n\nCHILD SAYS: {text}"
+    try:
+        text = request.text
+        tasks = request.tasks
+        
+        # Construct Context from Tasks
+        task_context = "The child has the following goals:\n"
+        for t in tasks:
+            status = "COMPLETED" if t.completed else "NOT DONE"
+            task_context += f"- {t.title} ({status})\n"
+        
+        system_prompt = os.getenv("SYSTEM_INSTRUCTION", "You are Healtogochi.")
+        full_prompt = f"{system_prompt}\n\nCONTEXT:\n{task_context}\n\nCHILD SAYS: {text}"
 
-    # Get Gemini response
-    chat = model.start_chat()
-    response = chat.send_message(full_prompt)
-    response_text = response.text
-    
-    # Save to MongoDB
-    await db.chat_logs.insert_one({
-        "user_text": text,
-        "ai_text": response_text,
-        "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-    })
+        print(f"DEBUG: Talking to Gemini (flash-latest) with prompt: {full_prompt[:100]}...")
 
-    # Generate ElevenLabs audio
-    audio_content = await text_to_speech(response_text)
-    
-    if audio_content:
-        # URL encode the text for the header to avoid Unicode issues
-        encoded_text = urllib.parse.quote(response_text)
-        # Return audio as response with custom header for text
-        return Response(
-            content=audio_content,
-            media_type="audio/mpeg",
-            headers={"X-Response-Text": encoded_text}
-        )
-    
-    return {"text": response_text}
+        # Get Gemini response
+        chat = model.start_chat()
+        response = chat.send_message(full_prompt)
+        
+        try:
+            response_text = response.text
+        except Exception as e:
+            print(f"DEBUG: Gemini response.text failed: {e}")
+            if hasattr(response, 'candidates'):
+                 print(f"DEBUG: Response candidates: {response.candidates}")
+            response_text = "I'm sorry, I'm having trouble thinking right now. Pip pip!"
+
+        print(f"DEBUG: Gemini response: {response_text}")
+
+        # Save to MongoDB
+        await db.chat_logs.insert_one({
+            "user_text": text,
+            "ai_text": response_text,
+            "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        })
+
+        # Generate ElevenLabs audio
+        print("DEBUG: Generating audio via ElevenLabs...")
+        audio_content = await text_to_speech(response_text)
+        
+        if audio_content:
+            print("DEBUG: Audio generated successfully.")
+            # URL encode the text for the header to avoid Unicode issues
+            encoded_text = urllib.parse.quote(response_text)
+            # Return audio as response with custom header for text
+            return Response(
+                content=audio_content,
+                media_type="audio/mpeg",
+                headers={"X-Response-Text": encoded_text}
+            )
+        
+        print("DEBUG: Audio generation failed or skipped.")
+        return {"text": response_text}
+    except Exception as e:
+        import traceback
+        error_msg = str(e)
+        print(f"ERROR in talk_to_mascot: {error_msg}")
+        traceback.print_exc()
+        
+        # Detect Quota/Rate Limit errors
+        if "429" in error_msg or "quota" in error_msg.lower():
+            friendly_msg = "Oops! My brain is a bit tired from talking so much. Please try again in a minute! Pip pip!"
+            return Response(content=friendly_msg, status_code=429)
+            
+        return Response(content=f"Error: {error_msg}", status_code=500)
 
 @app.get("/api/parent/chat-history")
 async def get_chat_history():
