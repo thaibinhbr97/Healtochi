@@ -1,5 +1,6 @@
 import { ArrowLeft } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
+import { API_BASE_URL } from '../utils/api';
 
 import { ChatLog } from '../types';
 
@@ -14,7 +15,7 @@ const ChatHistory: React.FC<ChatHistoryProps> = ({ onBack }) => {
     useEffect(() => {
         const fetchLogs = async () => {
             try {
-                const response = await fetch('http://127.0.0.1:8000/api/parent/chat-history');
+                const response = await fetch(`${API_BASE_URL}/api/parent/chat-history`);
                 if (response.ok) {
                     const data = await response.json();
                     setLogs(data);

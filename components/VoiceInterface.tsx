@@ -1,5 +1,6 @@
 import { Loader2, Mic, MicOff, XCircle } from 'lucide-react';
 import React, { useEffect, useRef, useState } from 'react';
+import { API_BASE_URL } from '../utils/api';
 
 import { INITIAL_TASKS } from '../constants';
 import { Task } from '../types';
@@ -82,7 +83,7 @@ const VoiceInterface: React.FC<VoiceInterfaceProps> = ({ onTalkingStateChange, o
         setError(null);
 
         try {
-            const response = await fetch('http://127.0.0.1:8000/api/talk', {
+            const response = await fetch(`${API_BASE_URL}/api/talk`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

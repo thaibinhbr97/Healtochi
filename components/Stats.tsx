@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { HealthStats, MoodLog } from '../types';
+import { API_BASE_URL } from '../utils/api';
 
 interface StatsProps {
     moodLogs: MoodLog[];
@@ -13,7 +14,7 @@ const Stats: React.FC<StatsProps> = ({ moodLogs, totalXP }) => {
     useEffect(() => {
         const fetchStats = async () => {
             try {
-                const response = await fetch('http://127.0.0.1:8000/api/health/stats');
+                const response = await fetch(`${API_BASE_URL}/api/health/stats`);
                 if (response.ok) {
                     const data = await response.json();
                     setWeeklyStats(data);

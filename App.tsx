@@ -8,6 +8,7 @@ import Stats from './components/Stats';
 import VoiceInterface from './components/VoiceInterface';
 import { INITIAL_TASKS, SHOP_ITEMS } from './constants';
 import { MoodLog, PetState, Tab, Task } from './types';
+import { API_BASE_URL } from './utils/api';
 import { AUDIO_SOURCES, playSound } from './utils/audio';
 
 const App: React.FC = () => {
@@ -65,7 +66,7 @@ const App: React.FC = () => {
     useEffect(() => {
         const fetchTasks = async () => {
             try {
-                const response = await fetch('http://127.0.0.1:8000/api/tasks');
+                const response = await fetch(`${API_BASE_URL}/api/tasks`);
                 if (response.ok) {
                     const data = await response.json();
                     if (data && data.length > 0) {
@@ -105,8 +106,8 @@ const App: React.FC = () => {
 
         // Persist to Backend
         try {
-            await fetch(`http://127.0.0.1:8000/api/tasks/${taskId}`, {
-                method: 'PUT',
+            await fetch(`${API_BASE_URL}/api/tasks/${taskId}`, {
+                method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     completed: newStatus,
@@ -130,7 +131,7 @@ const App: React.FC = () => {
         try {
             // In a real app, this address would come from the user's connected wallet
             const userAddress = "8zAH3PTdK1tpF4RtHwnx9SXuinfygKcs8XbBJccojFGS";
-            const response = await fetch('http://127.0.0.1:8000/api/reward', {
+            const response = await fetch(`${API_BASE_URL}/api/reward`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -188,7 +189,7 @@ const App: React.FC = () => {
 
         // PERSIST TO MONGODB
         try {
-            await fetch('http://127.0.0.1:8000/api/mood', {
+            await fetch(`${API_BASE_URL}/api/mood`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -233,7 +234,7 @@ const App: React.FC = () => {
 
         // Persist to Backend
         try {
-            await fetch('http://127.0.0.1:8000/api/health', {
+            await fetch(`${API_BASE_URL}/api/health`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -257,7 +258,7 @@ const App: React.FC = () => {
         };
 
         try {
-            const response = await fetch('http://127.0.0.1:8000/api/tasks', {
+            const response = await fetch(`${API_BASE_URL}/api/tasks`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(newTask)

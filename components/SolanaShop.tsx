@@ -1,6 +1,7 @@
 import { RefreshCw, ShoppingBag, Wallet } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { SHOP_ITEMS } from '../constants';
+import { API_BASE_URL } from '../utils/api';
 
 interface SolanaShopProps {
     tokens: number;
@@ -17,7 +18,7 @@ const SolanaShop: React.FC<SolanaShopProps> = ({ tokens, onPurchase, onBalanceCh
     const fetchBalance = async () => {
         setIsLoading(true);
         try {
-            const res = await fetch(`http://127.0.0.1:8000/api/balance/${USER_ADDRESS}`);
+            const res = await fetch(`${API_BASE_URL}/api/balance/${USER_ADDRESS}`);
             const data = await res.json();
             if (data.status === 'success') {
                 // Convert from smallest unit (6 decimals) to display value
@@ -92,7 +93,7 @@ const SolanaShop: React.FC<SolanaShopProps> = ({ tokens, onPurchase, onBalanceCh
 
                             // First, validate against on-chain balance
                             try {
-                                const res = await fetch('http://127.0.0.1:8000/api/spend', {
+                                const res = await fetch(`${API_BASE_URL}/api/spend`, {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
                                     body: JSON.stringify({
