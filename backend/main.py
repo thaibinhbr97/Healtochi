@@ -1,11 +1,15 @@
 import os
+from dotenv import load_dotenv
+
+# Load environment variables before other imports
+load_dotenv()
+
 from datetime import datetime, timezone, timedelta
 import uvicorn
 import urllib.parse
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, UploadFile, File, Response
 from fastapi.middleware.cors import CORSMiddleware
-from dotenv import load_dotenv
 import google.generativeai as genai
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel
@@ -13,7 +17,13 @@ from typing import List, Optional
 from utils.tts import text_to_speech
 from utils.solana_utils import reward_user
 
-load_dotenv()
+# Setup logging to file
+import logging
+logging.basicConfig(
+    filename="api.log", 
+    level=logging.DEBUG,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -42,7 +52,7 @@ db = client.healtogochi
 
 # GenAI Setup
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-model = genai.GenerativeModel('gemini-2.5-flash', system_instruction=os.getenv("SYSTEM_INSTRUCTION", "You are Healtogochi, a cute healing pet for kids."))
+model = genai.GenerativeModel('gemini-3.1-flash-lite-preview', system_instruction=os.getenv("SYSTEM_INSTRUCTION", "You are Healtogochi, a cute healing pet for kids."))
 
 class MoodLog(BaseModel):
     mood: str

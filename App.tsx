@@ -10,6 +10,7 @@ import SolanaShop from './components/SolanaShop';
 import Stats from './components/Stats';
 import VoiceInterface from './components/VoiceInterface';
 import { INITIAL_TASKS, SHOP_ITEMS } from './constants';
+import './index.css';
 import { MoodLog, PetState, Tab, Task } from './types';
 import { API_BASE_URL } from './utils/api';
 import { AUDIO_SOURCES, playSound } from './utils/audio';
@@ -235,13 +236,15 @@ const App: React.FC = () => {
                     playSound(AUDIO_SOURCES.CELEBRATION, 3000);
                     setTimeout(() => setShowPurchaseSuccess(false), 4000);
                 }} />;
+            case 'STATS' as any:
+                return <Stats moodLogs={moodLogs} totalXP={pet.xp + (pet.level * 100)} />;
             default: return null;
         }
     };
 
     return (
-        <div className="flex flex-col h-full bg-slate-50 max-w-md mx-auto shadow-2xl overflow-hidden relative">
-            <main className="flex-1 relative overflow-hidden">
+        <div className="flex flex-col h-full bg-white max-w-md mx-auto shadow-2xl relative overflow-hidden">
+            <main className="flex-1 overflow-hidden relative">
                 {renderContent()}
                 {solanaTx && (
                     <div className="absolute top-20 left-4 right-4 z-[70] bg-slate-900/90 backdrop-blur-md text-white p-3 rounded-2xl shadow-2xl border border-white/10 animate-in slide-in-from-top duration-500">
@@ -256,8 +259,6 @@ const App: React.FC = () => {
                     </div>
                 )}
             </main>
-
-            {activeTab === 'STATS' as any && !isParentMode && <Stats moodLogs={moodLogs} totalXP={pet.xp + (pet.level * 100)} />}
 
             {!isParentMode && <BottomNav activeTab={activeTab} onTabChange={setActiveTab} onParentModeClick={() => setIsParentMode(true)} />}
 

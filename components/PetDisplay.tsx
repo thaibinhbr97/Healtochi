@@ -1,4 +1,8 @@
 import React, { useEffect, useState } from 'react';
+import wholeBodyDolphin from '../illustrations/dolphin_wholebody.png';
+import happyDolphin from '../illustrations/happy_dolphin.png';
+import sadDolphin from '../illustrations/sad_dolphin.png';
+import tiredDolphin from '../illustrations/tired_dolphin.png';
 import { PetState, Task } from '../types';
 import { AUDIO_SOURCES, playSound } from '../utils/audio';
 

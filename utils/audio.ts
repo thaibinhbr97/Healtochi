@@ -1,5 +1,10 @@
 
 
+import celebrationSound from '../assets/audio/celebration.mp3';
+import checkinSound from '../assets/audio/checkin.mp3';
+import drinkingSound from '../assets/audio/drinking.mp3';
+import eatingSound from '../assets/audio/eating.mp3';
+
 export const AUDIO_SOURCES = {
     EATING: eatingSound,
     DRINKING: drinkingSound,

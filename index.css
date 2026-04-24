@@ -8,6 +8,14 @@
     --color-accent: #facc15;
 }
 
+html,
+body,
+#root {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+}
+
 body {
     @apply bg-slate-50 text-slate-800;
     font-family: 'Fredoka', sans-serif;
