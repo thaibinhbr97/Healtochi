@@ -77,6 +77,14 @@ class RewardRequest(BaseModel):
     icon: Optional[str] = None
     completedAt: Optional[str] = None
 
+@app.middleware("http")
+async def remove_double_slashes(request, call_next):
+    # If the path contains //, replace it with /
+    new_path = request.url.path.replace("//", "/")
+    if new_path != request.url.path:
+        request.scope["path"] = new_path
+    return await call_next(request)
+
 @app.get("/")
 async def root():
     return {
@@ -89,6 +97,7 @@ async def root():
         }
     }
 
+@app.patch("/api/tasks/{task_id}")
 @app.put("/api/tasks/{task_id}")
 async def update_task(task_id: str, task_update: TaskUpdate):
     update_data = {k: v for k, v in task_update.dict().items() if v is not None}
